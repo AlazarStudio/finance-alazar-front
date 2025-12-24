@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import Table from "../components/Table/Table.jsx";
+import TableColumnSettings from "../components/Table/TableColumnSettings.jsx";
 import InputField from "../components/Forms/InputField.jsx";
 import NumberField from "../components/Forms/NumberField.jsx";
 import Modal from "../components/Modal/Modal.jsx";
@@ -11,6 +12,13 @@ function EmployeesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ fullName: "", position: "", percent: 0 });
+  const [visibleColumns, setVisibleColumns] = useState({});
+
+  const employeesColumns = [
+    { label: "ФИО", key: "fullName" },
+    { label: "Должность", key: "position" },
+    { label: "Процент", key: "percent", render: (row) => `${row.percent || 0}%` },
+  ];
 
   const filtered = useMemo(() => {
     const query = search.toLowerCase();
@@ -78,18 +86,24 @@ function EmployeesPage() {
 
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ margin: 0 }}>Список сотрудников</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ margin: 0 }}>Список сотрудников</h3>
+            <TableColumnSettings
+              columns={employeesColumns}
+              storageKey="employees-columns"
+              onColumnsChange={setVisibleColumns}
+            />
+          </div>
           <button className="btn" onClick={handleAdd}>
             Добавить
           </button>
         </div>
         <Table
           columns={[
-            { label: "ФИО", key: "fullName" },
-            { label: "Должность", key: "position" },
-            { label: "Процент", render: (row) => `${row.percent || 0}%` },
+            ...employeesColumns,
             {
               label: "Действия",
+              key: "actions",
               render: (row) => (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="btn secondary" onClick={() => startEdit(row)}>
@@ -103,6 +117,7 @@ function EmployeesPage() {
             },
           ]}
           data={filtered}
+          visibleColumns={visibleColumns}
         />
       </div>
 

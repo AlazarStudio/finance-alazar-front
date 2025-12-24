@@ -1,20 +1,72 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import InputField from "../components/Forms/InputField.jsx";
 import SelectField from "../components/Forms/SelectField.jsx";
+import AutocompleteSelectField from "../components/Forms/AutocompleteSelectField.jsx";
 import MultiSelectField from "../components/Forms/MultiSelectField.jsx";
 import Table from "../components/Table/Table.jsx";
+import TableColumnSettings from "../components/Table/TableColumnSettings.jsx";
 import { useAppStore } from "../store/AppStoreContext.jsx";
 import { formatDate, isWithinRange } from "../utils/date.js";
 import * as XLSX from "xlsx";
 
+const STORAGE_KEY_FILTERS = "reports-filters";
+const STORAGE_KEY_COLUMNS_INCOMES = "reports-columns-incomes";
+const STORAGE_KEY_COLUMNS_EXPENSES = "reports-columns-expenses";
+
 function ReportsPage() {
   const { state } = useAppStore();
 
-  const [reportType, setReportType] = useState("general");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [selectedClients, setSelectedClients] = useState([]);
-  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  // Загружаем фильтры из localStorage
+  const loadFilters = () => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_FILTERS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          reportType: parsed.reportType || "general",
+          dateFrom: parsed.dateFrom || "",
+          dateTo: parsed.dateTo || "",
+          selectedClients: parsed.selectedClients || [],
+          selectedEmployees: parsed.selectedEmployees || [],
+          dataType: parsed.dataType || "incomes", // incomes, expenses, both
+        };
+      }
+    } catch (e) {
+      console.error("Failed to load filters", e);
+    }
+    return {
+      reportType: "general",
+      dateFrom: "",
+      dateTo: "",
+      selectedClients: [],
+      selectedEmployees: [],
+      dataType: "incomes",
+    };
+  };
+
+  const initialFilters = loadFilters();
+
+  const [reportType, setReportType] = useState(initialFilters.reportType);
+  const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom);
+  const [dateTo, setDateTo] = useState(initialFilters.dateTo);
+  const [selectedClients, setSelectedClients] = useState(initialFilters.selectedClients);
+  const [selectedEmployees, setSelectedEmployees] = useState(initialFilters.selectedEmployees);
+  const [dataType, setDataType] = useState(initialFilters.dataType);
+  const [incomesVisibleColumns, setIncomesVisibleColumns] = useState({});
+  const [expensesVisibleColumns, setExpensesVisibleColumns] = useState({});
+
+  // Сохраняем фильтры в localStorage при изменении
+  useEffect(() => {
+    const filters = {
+      reportType,
+      dateFrom,
+      dateTo,
+      selectedClients,
+      selectedEmployees,
+      dataType,
+    };
+    localStorage.setItem(STORAGE_KEY_FILTERS, JSON.stringify(filters));
+  }, [reportType, dateFrom, dateTo, selectedClients, selectedEmployees, dataType]);
 
   const clientOptions = state.clients.map((c) => ({ value: c.id, label: c.name }));
   const employeeOptions = state.employees.map((e) => ({ value: e.id, label: e.fullName }));
@@ -104,6 +156,25 @@ function ReportsPage() {
     });
   }, [filteredIncomes, state.clients, state.employees]);
 
+  // Подсчет итогов для таблицы доходов
+  const incomesTotals = useMemo(() => {
+    if (incomesTableData.length === 0) return null;
+    return {
+      date: "Всего",
+      client: "",
+      title: "",
+      employees: "",
+      amount: incomesTableData.reduce((sum, row) => sum + row.amount, 0),
+      taxPercent: "",
+      taxAmount: incomesTableData.reduce((sum, row) => sum + row.taxAmount, 0),
+      npAmount: incomesTableData.reduce((sum, row) => sum + row.npAmount, 0),
+      internalCosts: incomesTableData.reduce((sum, row) => sum + row.internalCosts, 0),
+      employeePayouts: incomesTableData.reduce((sum, row) => sum + row.employeePayouts, 0),
+      profit: incomesTableData.reduce((sum, row) => sum + row.profit, 0),
+      comment: "",
+    };
+  }, [incomesTableData]);
+
   // Подготовка данных для таблицы расходов
   const expensesTableData = useMemo(() => {
     const variableData = filteredVariableExpenses.map((exp) => ({
@@ -128,6 +199,18 @@ function ReportsPage() {
 
     return [...variableData, ...fixedData];
   }, [filteredVariableExpenses, state.fixedExpenses, state.expenseCategories]);
+
+  // Подсчет итогов для таблицы расходов
+  const expensesTotals = useMemo(() => {
+    if (expensesTableData.length === 0) return null;
+    return {
+      date: "Всего",
+      title: "",
+      category: "",
+      amount: expensesTableData.reduce((sum, row) => sum + row.amount, 0),
+      comment: "",
+    };
+  }, [expensesTableData]);
 
   const totalIncome = useMemo(() => {
     return filteredIncomes.reduce((sum, i) => sum + Number(i.amount || 0), 0);
@@ -157,8 +240,13 @@ function ReportsPage() {
       return;
     }
 
-    // Подготовка данных для доходов
-    const incomesData = filteredIncomes.map((income) => {
+    const wb = XLSX.utils.book_new();
+    const fileName = `Отчет_${dateFrom}_${dateTo}.xlsx`;
+
+    // Генерируем данные в зависимости от выбранного типа
+    if (dataType === "incomes" || dataType === "both") {
+      // Подготовка данных для доходов
+      const incomesData = filteredIncomes.map((income) => {
       // Получаем список исполнителей
       let employeeNames = "—";
       let employeePayouts = 0;
@@ -190,67 +278,62 @@ function ReportsPage() {
       };
     });
 
-    // Добавляем итоговую строку для доходов
-    const totalIncome = filteredIncomes.reduce((sum, i) => sum + Number(i.amount || 0), 0);
-    const totalProfit = filteredIncomes.reduce((sum, i) => sum + Number(i.profit || 0), 0);
-    incomesData.push({
-      Дата: "ИТОГО",
-      Клиент: "",
-      Название: "",
-      Исполнители: "",
-      Сумма: totalIncome,
-      "Налог, %": "",
-      "Налог, сумма": "",
-      НП: "",
-      "Внутренние расходы": "",
-      "Выплаты исполнителям": "",
-      Прибыль: totalProfit,
-      Комментарий: "",
-    });
+      // Добавляем итоговую строку для доходов
+      const totalIncomeForExcel = filteredIncomes.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+      const totalProfitForExcel = filteredIncomes.reduce((sum, i) => sum + Number(i.profit || 0), 0);
+      incomesData.push({
+        Дата: "ИТОГО",
+        Клиент: "",
+        Название: "",
+        Исполнители: "",
+        Сумма: totalIncomeForExcel,
+        "Налог, %": "",
+        "Налог, сумма": "",
+        НП: "",
+        "Внутренние расходы": "",
+        "Выплаты исполнителям": "",
+        Прибыль: totalProfitForExcel,
+        Комментарий: "",
+      });
 
-    // Подготовка данных для расходов
-    const expensesData = filteredVariableExpenses.map((exp) => ({
-      Дата: formatDate(exp.date),
-      Название: exp.title || "—",
-      Категория: state.expenseCategories.find((c) => c.id === exp.categoryId)?.name || "—",
-      Сумма: Number(exp.amount || 0),
-      Комментарий: exp.comment || "—",
-    }));
+      const wsIncomes = XLSX.utils.json_to_sheet(incomesData);
+      XLSX.utils.book_append_sheet(wb, wsIncomes, "Доходы");
+    }
 
-    // Добавляем постоянные расходы
-    const fixedExpensesData = state.fixedExpenses.map((exp) => ({
-      Дата: "Постоянный",
-      Название: exp.name || "—",
-      Категория: "Постоянный расход",
-      Сумма: Number(exp.amount || 0),
-      Комментарий: exp.period || "—",
-    }));
+    if (dataType === "expenses" || dataType === "both") {
+      // Подготовка данных для расходов
+      const expensesData = filteredVariableExpenses.map((exp) => ({
+        Дата: formatDate(exp.date),
+        Название: exp.title || "—",
+        Категория: state.expenseCategories.find((c) => c.id === exp.categoryId)?.name || "—",
+        Сумма: Number(exp.amount || 0),
+        Комментарий: exp.comment || "—",
+      }));
 
-    const allExpenses = [...expensesData, ...fixedExpensesData];
+      // Добавляем постоянные расходы
+      const fixedExpensesData = state.fixedExpenses.map((exp) => ({
+        Дата: "Постоянный",
+        Название: exp.name || "—",
+        Категория: "Постоянный расход",
+        Сумма: Number(exp.amount || 0),
+        Комментарий: exp.period || "—",
+      }));
 
-    // Добавляем итоговую строку для расходов
-    const totalExpenses = allExpenses.reduce((sum, e) => sum + Number(e.Сумма || 0), 0);
-    allExpenses.push({
-      Дата: "ИТОГО",
-      Название: "",
-      Категория: "",
-      Сумма: totalExpenses,
-      Комментарий: "",
-    });
+      const allExpenses = [...expensesData, ...fixedExpensesData];
 
-    // Создание книги Excel
-    const wb = XLSX.utils.book_new();
+      // Добавляем итоговую строку для расходов
+      const totalExpensesForExcel = allExpenses.reduce((sum, e) => sum + Number(e.Сумма || 0), 0);
+      allExpenses.push({
+        Дата: "ИТОГО",
+        Название: "",
+        Категория: "",
+        Сумма: totalExpensesForExcel,
+        Комментарий: "",
+      });
 
-    // Лист доходов
-    const wsIncomes = XLSX.utils.json_to_sheet(incomesData);
-    XLSX.utils.book_append_sheet(wb, wsIncomes, "Доходы");
-
-    // Лист расходов
-    const wsExpenses = XLSX.utils.json_to_sheet(allExpenses);
-    XLSX.utils.book_append_sheet(wb, wsExpenses, "Расходы");
-
-    // Генерация имени файла
-    const fileName = `Отчет_${dateFrom}_${dateTo}.xlsx`;
+      const wsExpenses = XLSX.utils.json_to_sheet(allExpenses);
+      XLSX.utils.book_append_sheet(wb, wsExpenses, "Расходы");
+    }
 
     // Сохранение файла
     XLSX.writeFile(wb, fileName);
@@ -261,18 +344,70 @@ function ReportsPage() {
     setDateTo("");
     setSelectedClients([]);
     setSelectedEmployees([]);
+    setReportType("general");
+    setDataType("both");
+    localStorage.removeItem(STORAGE_KEY_FILTERS);
   };
+
+  // Определяем колонки для таблиц
+  const incomesColumns = [
+    { label: "Дата", key: "date" },
+    { label: "Клиент", key: "client" },
+    { label: "Название", key: "title" },
+    { label: "Исполнители", key: "employees" },
+    { label: "Сумма", key: "amount", render: (row) => row.amount.toLocaleString() },
+    { label: "Налог, %", key: "taxPercent", render: (row) => row.taxPercent },
+    { label: "Налог, сумма", key: "taxAmount", render: (row) => row.taxAmount.toLocaleString() },
+    { label: "НП", key: "npAmount", render: (row) => row.npAmount.toLocaleString() },
+    { label: "Внутр. расходы", key: "internalCosts", render: (row) => row.internalCosts.toLocaleString() },
+    { label: "Выплаты", key: "employeePayouts", render: (row) => row.employeePayouts.toLocaleString() },
+    { label: "Прибыль", key: "profit", render: (row) => row.profit.toLocaleString() },
+    { label: "Комментарий", key: "comment" },
+  ];
+
+  const expensesColumns = [
+    { label: "Дата", key: "date" },
+    { label: "Название", key: "title" },
+    { label: "Категория", key: "category" },
+    { label: "Сумма", key: "amount", render: (row) => row.amount.toLocaleString() },
+    { label: "Комментарий", key: "comment" },
+  ];
 
   return (
     <div>
       <div className="page-header">
         <h2>Отчеты</h2>
+        <button
+          type="button"
+          onClick={handleClearFilters}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--text-secondary)",
+            cursor: "pointer",
+            padding: "4px 8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "18px",
+            transition: "color 0.2s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.color = "var(--text-primary)";
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.color = "var(--text-secondary)";
+          }}
+          title="Сбросить фильтры"
+        >
+          🔄
+        </button>
       </div>
 
       <div className="card">
         <h3 style={{ marginTop: 0, marginBottom: 16 }}>Параметры отчета</h3>
         <div className="grid">
-          <SelectField
+          <AutocompleteSelectField
             label="Тип отчета"
             value={reportType}
             onChange={(v) => {
@@ -286,6 +421,17 @@ function ReportsPage() {
               { value: "employee", label: "По исполнителю" },
             ]}
             placeholder="Выберите тип"
+          />
+          <AutocompleteSelectField
+            label="Тип данных"
+            value={dataType}
+            onChange={setDataType}
+            options={[
+              { value: "both", label: "Доходы и расходы" },
+              { value: "incomes", label: "Доходы" },
+              { value: "expenses", label: "Расходы" },
+            ]}
+            placeholder="Выберите тип данных"
           />
           <InputField
             label="Дата с *"
@@ -331,79 +477,72 @@ function ReportsPage() {
 
       {dateFrom && dateTo && (
         <>
-          <div className="card">
-            <div className="page-header" style={{ marginBottom: 16 }}>
-              <h3 style={{ margin: 0 }}>Доходы</h3>
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <div className="badge">
-                  Записей: {incomesTableData.length} | Сумма: {totalIncome.toLocaleString()} | Прибыль: {totalProfit.toLocaleString()}
+          {(dataType === "incomes" || dataType === "both") && (
+            <div className="card">
+              <div className="page-header" style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <h3 style={{ margin: 0 }}>Доходы</h3>
+                  <TableColumnSettings
+                    columns={incomesColumns}
+                    storageKey={STORAGE_KEY_COLUMNS_INCOMES}
+                    onColumnsChange={setIncomesVisibleColumns}
+                  />
                 </div>
-                <button className="btn" onClick={generateExcel}>
-                  Скачать Excel
-                </button>
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <div className="badge">
+                    Записей: {incomesTableData.length} | Сумма: {totalIncome.toLocaleString()} | Прибыль: {totalProfit.toLocaleString()}
+                  </div>
+                  <button className="btn" onClick={generateExcel}>
+                    Скачать Excel
+                  </button>
+                </div>
               </div>
-            </div>
-            {incomesTableData.length > 0 ? (
-              <>
+              {incomesTableData.length > 0 ? (
                 <Table
                   data={incomesTableData}
-                  columns={[
-                    { label: "Дата", key: "date" },
-                    { label: "Клиент", key: "client" },
-                    { label: "Название", key: "title" },
-                    { label: "Исполнители", key: "employees" },
-                    { label: "Сумма", render: (row) => row.amount.toLocaleString() },
-                    { label: "Налог, %", render: (row) => row.taxPercent },
-                    { label: "Налог, сумма", render: (row) => row.taxAmount.toLocaleString() },
-                    { label: "НП", render: (row) => row.npAmount.toLocaleString() },
-                    { label: "Внутр. расходы", render: (row) => row.internalCosts.toLocaleString() },
-                    { label: "Выплаты", render: (row) => row.employeePayouts.toLocaleString() },
-                    { label: "Прибыль", render: (row) => row.profit.toLocaleString() },
-                    { label: "Комментарий", key: "comment" },
-                  ]}
+                  columns={incomesColumns}
                   rowKey={(row) => row.id}
+                  totals={incomesTotals}
+                  visibleColumns={incomesVisibleColumns}
                 />
-                <div style={{ marginTop: 16, padding: "12px", backgroundColor: "var(--bg-tertiary)", borderRadius: "8px", fontWeight: "600" }}>
-                  ИТОГО: Сумма {totalIncome.toLocaleString()} | Прибыль {totalProfit.toLocaleString()}
-                </div>
-              </>
-            ) : (
-              <p style={{ padding: "20px", textAlign: "center", color: "var(--text-secondary)" }}>
-                Нет данных за выбранный период
-              </p>
-            )}
-          </div>
-
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="page-header" style={{ marginBottom: 16 }}>
-              <h3 style={{ margin: 0 }}>Расходы</h3>
-              <div className="badge">
-                Записей: {expensesTableData.length} | Сумма: {totalExpenses.toLocaleString()}
-              </div>
+              ) : (
+                <p style={{ padding: "20px", textAlign: "center", color: "var(--text-secondary)" }}>
+                  Нет данных за выбранный период
+                </p>
+              )}
             </div>
-            {expensesTableData.length > 0 ? (
-              <>
+          )}
+
+          {(dataType === "expenses" || dataType === "both") && (
+            <div className="card" style={{ marginTop: 16 }}>
+              <div className="page-header" style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <h3 style={{ margin: 0 }}>Расходы</h3>
+                  <TableColumnSettings
+                    columns={expensesColumns}
+                    storageKey={STORAGE_KEY_COLUMNS_EXPENSES}
+                    onColumnsChange={setExpensesVisibleColumns}
+                  />
+                </div>
+                <div className="badge">
+                  Записей: {expensesTableData.length} | Сумма: {totalExpenses.toLocaleString()}
+                </div>
+              </div>
+              {expensesTableData.length > 0 ? (
                 <Table
                   data={expensesTableData}
-                  columns={[
-                    { label: "Дата", key: "date" },
-                    { label: "Название", key: "title" },
-                    { label: "Категория", key: "category" },
-                    { label: "Сумма", render: (row) => row.amount.toLocaleString() },
-                    { label: "Комментарий", key: "comment" },
-                  ]}
+                  columns={expensesColumns}
                   rowKey={(row) => `${row.type}-${row.id}`}
+                  totals={expensesTotals}
+                  visibleColumns={expensesVisibleColumns}
                 />
-                <div style={{ marginTop: 16, padding: "12px", backgroundColor: "var(--bg-tertiary)", borderRadius: "8px", fontWeight: "600" }}>
-                  ИТОГО: {totalExpenses.toLocaleString()}
-                </div>
-              </>
-            ) : (
-              <p style={{ padding: "20px", textAlign: "center", color: "var(--text-secondary)" }}>
-                Нет данных за выбранный период
-              </p>
-            )}
-          </div>
+              ) : (
+                <p style={{ padding: "20px", textAlign: "center", color: "var(--text-secondary)" }}>
+                  Нет данных за выбранный период
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
 

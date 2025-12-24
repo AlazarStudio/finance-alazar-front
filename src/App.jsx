@@ -10,6 +10,7 @@ import FixedExpensesPage from "./routes/FixedExpensesPage.jsx";
 import VariableExpensesPage from "./routes/VariableExpensesPage.jsx";
 import ReportsPage from "./routes/ReportsPage.jsx";
 import SettingsPage from "./routes/SettingsPage.jsx";
+import CalculatorPage from "./routes/CalculatorPage.jsx";
 import { AppStoreProvider, useAppStore } from "./store/AppStoreContext.jsx";
 import { AuthProvider, useAuth } from "./store/AuthContext.jsx";
 
@@ -71,6 +72,7 @@ function AppRoutes() {
         <Route path="/fixed-expenses" element={<FixedExpensesPage />} />
         <Route path="/variable-expenses" element={<VariableExpensesPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/calculator" element={<CalculatorPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

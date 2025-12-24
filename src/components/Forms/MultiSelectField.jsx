@@ -51,6 +51,10 @@ function MultiSelectField({ label, value = [], onChange, options, required, plac
             display: "flex",
             alignItems: "center",
             transition: "border-color 0.3s ease",
+            outline: "none",
+          }}
+          onFocus={(e) => {
+            e.target.style.outline = "none";
           }}
         >
           <span style={{ flex: 1, color: selectedLabels ? "var(--text-primary)" : "var(--text-secondary)" }}>
@@ -73,6 +77,7 @@ function MultiSelectField({ label, value = [], onChange, options, required, plac
               zIndex: 1000,
               maxHeight: "200px",
               overflowY: "auto",
+              outline: "none",
             }}
           >
             {options.map((opt) => (

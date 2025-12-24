@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import Table from "../components/Table/Table.jsx";
+import TableColumnSettings from "../components/Table/TableColumnSettings.jsx";
 import InputField from "../components/Forms/InputField.jsx";
 import NumberField from "../components/Forms/NumberField.jsx";
 import SelectField from "../components/Forms/SelectField.jsx";
+import AutocompleteSelectField from "../components/Forms/AutocompleteSelectField.jsx";
 import TextAreaField from "../components/Forms/TextAreaField.jsx";
 import Modal from "../components/Modal/Modal.jsx";
 import { useAppStore } from "../store/AppStoreContext.jsx";
@@ -23,6 +25,15 @@ function VariableExpensesPage() {
   const [variableEditId, setVariableEditId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filters, setFilters] = useState({ from: "", to: "", categoryId: "", query: "" });
+  const [visibleColumns, setVisibleColumns] = useState({});
+
+  const variableExpensesColumns = [
+    { label: "Дата", key: "date", render: (row) => formatDate(row.date) },
+    { label: "Название", key: "title" },
+    { label: "Категория", key: "category", render: (row) => state.expenseCategories.find((c) => c.id === row.categoryId)?.name || "—" },
+    { label: "Сумма", key: "amount", render: (row) => Number(row.amount || 0).toLocaleString() },
+    { label: "Комментарий", key: "comment" },
+  ];
 
   const variableFiltered = useMemo(() => {
     return state.variableExpenses.filter((exp) => {
@@ -98,11 +109,11 @@ function VariableExpensesPage() {
             />
           </div>
           <div style={{ minWidth: "250px" }}>
-            <SelectField
+            <AutocompleteSelectField
               label="Категория"
               value={filters.categoryId}
               onChange={(v) => setFilters({ ...filters, categoryId: v })}
-              options={categoryOptions}
+              options={[{ value: "", label: "Все" }, ...categoryOptions]}
               placeholder="Все"
             />
           </div>
@@ -130,7 +141,14 @@ function VariableExpensesPage() {
 
       <div className="card" style={{ marginTop: 16 }}>
         <div className="page-header" style={{ marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>Список разовых расходов</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ margin: 0 }}>Список разовых расходов</h3>
+            <TableColumnSettings
+              columns={variableExpensesColumns}
+              storageKey="variable-expenses-columns"
+              onColumnsChange={setVisibleColumns}
+            />
+          </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <div className="badge">Сумма: {variableTotal.toLocaleString()}</div>
           </div>
@@ -138,13 +156,10 @@ function VariableExpensesPage() {
         <Table
           data={variableFiltered}
           columns={[
-            { label: "Дата", render: (row) => formatDate(row.date) },
-            { label: "Название", key: "title" },
-            { label: "Категория", render: (row) => state.expenseCategories.find((c) => c.id === row.categoryId)?.name || "—" },
-            { label: "Сумма", render: (row) => Number(row.amount || 0).toLocaleString() },
-            { label: "Комментарий", key: "comment" },
+            ...variableExpensesColumns,
             {
               label: "Действия",
+              key: "actions",
               render: (row) => (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="btn secondary" onClick={() => startEdit(row)}>
@@ -157,6 +172,7 @@ function VariableExpensesPage() {
               ),
             },
           ]}
+          visibleColumns={visibleColumns}
         />
       </div>
 

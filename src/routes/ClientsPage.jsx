@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import Table from "../components/Table/Table.jsx";
+import TableColumnSettings from "../components/Table/TableColumnSettings.jsx";
 import InputField from "../components/Forms/InputField.jsx";
 import Modal from "../components/Modal/Modal.jsx";
 import { useAppStore } from "../store/AppStoreContext.jsx";
@@ -16,6 +17,15 @@ function ClientsPage() {
     contactName: "",
     phone: "",
   });
+  const [visibleColumns, setVisibleColumns] = useState({});
+
+  const clientsColumns = [
+    { label: "Название", key: "name" },
+    { label: "Организация", key: "organization" },
+    { label: "Сфера", key: "activityField" },
+    { label: "Контакт", key: "contactName" },
+    { label: "Телефон", key: "phone" },
+  ];
 
   const filtered = useMemo(() => {
     const query = search.toLowerCase();
@@ -86,20 +96,24 @@ function ClientsPage() {
 
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ margin: 0 }}>Список клиентов</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ margin: 0 }}>Список клиентов</h3>
+            <TableColumnSettings
+              columns={clientsColumns}
+              storageKey="clients-columns"
+              onColumnsChange={setVisibleColumns}
+            />
+          </div>
           <button className="btn" onClick={handleAdd}>
             Добавить
           </button>
         </div>
         <Table
           columns={[
-            { label: "Название", key: "name" },
-            { label: "Организация", key: "organization" },
-            { label: "Сфера", key: "activityField" },
-            { label: "Контакт", key: "contactName" },
-            { label: "Телефон", key: "phone" },
+            ...clientsColumns,
             {
               label: "Действия",
+              key: "actions",
               render: (row) => (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="btn secondary" onClick={() => startEdit(row)}>
@@ -113,6 +127,7 @@ function ClientsPage() {
             },
           ]}
           data={filtered}
+          visibleColumns={visibleColumns}
         />
       </div>
 

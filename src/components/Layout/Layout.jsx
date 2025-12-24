@@ -9,6 +9,7 @@ const navItems = [
   { to: "/fixed-expenses", label: "Постоянные расходы" },
   { to: "/variable-expenses", label: "Разовые расходы" },
   { to: "/reports", label: "Отчеты" },
+  { to: "/calculator", label: "Калькулятор" },
   { to: "/settings", label: "Настройки" },
 ];
 

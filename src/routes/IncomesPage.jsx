@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import Table from "../components/Table/Table.jsx";
+import TableColumnSettings from "../components/Table/TableColumnSettings.jsx";
 import InputField from "../components/Forms/InputField.jsx";
 import SelectField from "../components/Forms/SelectField.jsx";
+import AutocompleteSelectField from "../components/Forms/AutocompleteSelectField.jsx";
 import MultiSelectField from "../components/Forms/MultiSelectField.jsx";
 import NumberField from "../components/Forms/NumberField.jsx";
 import TextAreaField from "../components/Forms/TextAreaField.jsx";
@@ -30,6 +32,7 @@ function IncomesPage() {
     addIncome,
     updateIncome,
     deleteIncome,
+    addClient,
   } = useAppStore();
 
   const [filters, setFilters] = useState({
@@ -43,6 +46,47 @@ function IncomesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [selectedIncome, setSelectedIncome] = useState(null);
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [clientForm, setClientForm] = useState({
+    name: "",
+    organization: "",
+    activityField: "",
+    contactName: "",
+    phone: "",
+  });
+  const [visibleColumns, setVisibleColumns] = useState({});
+
+  const getEmployeeNames = (income) => {
+    if (!income.employees || !Array.isArray(income.employees)) return "—";
+    return income.employees
+      .map((emp) => {
+        const employee = state.employees.find((e) => e.id === emp.employeeId);
+        return employee?.fullName || "—";
+      })
+      .join(", ");
+  };
+
+  const incomesColumns = [
+    { label: "Дата", key: "date", sortKey: "date", render: (row) => formatDate(row.date) },
+    { 
+      label: "Клиент", 
+      key: "client", 
+      sortValue: (row) => {
+        const client = state.clients.find((c) => c.id === row.clientId);
+        return client?.name || "—";
+      },
+      render: (row) => state.clients.find((c) => c.id === row.clientId)?.name || "—" 
+    },
+    { label: "Название", key: "title" },
+    { 
+      label: "Исполнители", 
+      key: "employees", 
+      sortValue: (row) => getEmployeeNames(row),
+      render: (row) => getEmployeeNames(row) 
+    },
+    { label: "Сумма", key: "amount", sortKey: "amount", render: (row) => Number(row.amount || 0).toLocaleString() },
+    { label: "Прибыль", key: "profit", sortKey: "profit", render: (row) => Number(row.profit || 0).toLocaleString() },
+  ];
 
   // Миграция старых данных при загрузке
   const migratedIncomes = useMemo(() => {
@@ -242,16 +286,6 @@ function IncomesPage() {
     return form.employeeData.reduce((sum, emp) => sum + (Number(emp.payoutAmount) || 0), 0);
   };
 
-  const getEmployeeNames = (income) => {
-    if (!income.employees || !Array.isArray(income.employees)) return "—";
-    return income.employees
-      .map((emp) => {
-        const employee = state.employees.find((e) => e.id === emp.employeeId);
-        return employee?.fullName || "—";
-      })
-      .join(", ");
-  };
-
   const getEmployeePayoutTotalForIncome = (income) => {
     if (!income.employees || !Array.isArray(income.employees)) return 0;
     return income.employees.reduce((sum, emp) => sum + (Number(emp.payoutAmount) || 0), 0);
@@ -273,20 +307,20 @@ function IncomesPage() {
             />
           </div>
           <div style={{ minWidth: "250px" }}>
-            <SelectField
+            <AutocompleteSelectField
               label="Клиент"
               value={filters.clientId}
               onChange={(v) => setFilters({ ...filters, clientId: v })}
-              options={clientOptions}
+              options={[{ value: "", label: "Все" }, ...clientOptions]}
               placeholder="Все"
             />
           </div>
           <div style={{ minWidth: "250px" }}>
-            <SelectField
+            <AutocompleteSelectField
               label="Исполнитель"
               value={filters.employeeId}
               onChange={(v) => setFilters({ ...filters, employeeId: v })}
-              options={employeeOptions}
+              options={[{ value: "", label: "Все" }, ...employeeOptions]}
               placeholder="Все"
             />
           </div>
@@ -314,7 +348,14 @@ function IncomesPage() {
 
       <div className="card">
         <div className="page-header" style={{ marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>Список доходов</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ margin: 0 }}>Список доходов</h3>
+            <TableColumnSettings
+              columns={incomesColumns}
+              storageKey="incomes-columns"
+              onColumnsChange={setVisibleColumns}
+            />
+          </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <div className="badge">
               Итоги: доход {totalAmount.toLocaleString()} / прибыль {totalProfit.toLocaleString()}
@@ -328,14 +369,10 @@ function IncomesPage() {
           data={filtered}
           onRowClick={setSelectedIncome}
           columns={[
-            { label: "Дата", render: (row) => formatDate(row.date) },
-            { label: "Клиент", render: (row) => state.clients.find((c) => c.id === row.clientId)?.name || "—" },
-            { label: "Название", key: "title" },
-            { label: "Исполнители", render: (row) => getEmployeeNames(row) },
-            { label: "Сумма", render: (row) => Number(row.amount || 0).toLocaleString() },
-            { label: "Прибыль", render: (row) => Number(row.profit || 0).toLocaleString() },
+            ...incomesColumns,
             {
               label: "Действия",
+              key: "actions",
               render: (row) => (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="btn secondary" onClick={(e) => { e.stopPropagation(); startEdit(row); }}>
@@ -348,6 +385,7 @@ function IncomesPage() {
               ),
             },
           ]}
+          visibleColumns={visibleColumns}
         />
       </div>
 
@@ -423,7 +461,17 @@ function IncomesPage() {
       >
         <form id="income-form" onSubmit={handleSubmit} className="grid">
           <InputField label="Дата *" type="date" value={form.date} onChange={(v) => handleChangeField("date", v)} required />
-          <SelectField label="Клиент" value={form.clientId} onChange={(v) => handleChangeField("clientId", v)} options={clientOptions} placeholder="Выберите клиента" />
+          <AutocompleteSelectField 
+            label="Клиент" 
+            value={form.clientId} 
+            onChange={(v) => handleChangeField("clientId", v)} 
+            options={clientOptions} 
+            placeholder="Выберите клиента"
+            showAddButton={true}
+            onAddNew={() => {
+              setIsClientModalOpen(true);
+            }}
+          />
           <InputField label="Название *" value={form.title} onChange={(v) => handleChangeField("title", v)} required />
           
           <div style={{ gridColumn: "1 / -1" }}>
@@ -489,6 +537,84 @@ function IncomesPage() {
           <NumberField label="НП" value={form.npAmount} onChange={(v) => handleChangeField("npAmount", v)} />
           <NumberField label="Внутренние расходы" value={form.internalCosts} onChange={(v) => handleChangeField("internalCosts", v)} />
           <TextAreaField label="Комментарий" value={form.comment} onChange={(v) => handleChangeField("comment", v)} />
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={isClientModalOpen}
+        onClose={() => {
+          setIsClientModalOpen(false);
+          setClientForm({ name: "", organization: "", activityField: "", contactName: "", phone: "" });
+        }}
+        title="Добавление клиента"
+        actions={
+          <>
+            <button 
+              type="button" 
+              className="btn secondary" 
+              onClick={() => {
+                setIsClientModalOpen(false);
+                setClientForm({ name: "", organization: "", activityField: "", contactName: "", phone: "" });
+              }}
+            >
+              Отмена
+            </button>
+            <button 
+              type="submit" 
+              form="client-form" 
+              className="btn"
+            >
+              Добавить
+            </button>
+          </>
+        }
+      >
+        <form 
+          id="client-form" 
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!clientForm.name || !clientForm.phone) {
+              alert("Имя и телефон обязательны");
+              return;
+            }
+            try {
+              const newClient = await addClient(clientForm);
+              handleChangeField("clientId", newClient.id);
+              setIsClientModalOpen(false);
+              setClientForm({ name: "", organization: "", activityField: "", contactName: "", phone: "" });
+            } catch (error) {
+              alert("Ошибка при добавлении клиента");
+            }
+          }} 
+          className="grid"
+        >
+          <InputField 
+            label="Название *" 
+            value={clientForm.name} 
+            onChange={(v) => setClientForm({ ...clientForm, name: v })} 
+            required 
+          />
+          <InputField 
+            label="Телефон *" 
+            value={clientForm.phone} 
+            onChange={(v) => setClientForm({ ...clientForm, phone: v })} 
+            required 
+          />
+          <InputField 
+            label="Организация" 
+            value={clientForm.organization} 
+            onChange={(v) => setClientForm({ ...clientForm, organization: v })} 
+          />
+          <InputField 
+            label="Сфера деятельности" 
+            value={clientForm.activityField} 
+            onChange={(v) => setClientForm({ ...clientForm, activityField: v })} 
+          />
+          <InputField 
+            label="Контакт" 
+            value={clientForm.contactName} 
+            onChange={(v) => setClientForm({ ...clientForm, contactName: v })} 
+          />
         </form>
       </Modal>
     </div>

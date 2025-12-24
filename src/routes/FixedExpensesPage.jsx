@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Table from "../components/Table/Table.jsx";
+import TableColumnSettings from "../components/Table/TableColumnSettings.jsx";
 import InputField from "../components/Forms/InputField.jsx";
 import NumberField from "../components/Forms/NumberField.jsx";
 import Modal from "../components/Modal/Modal.jsx";
@@ -19,6 +20,13 @@ function FixedExpensesPage() {
   const [fixedForm, setFixedForm] = useState(emptyFixed);
   const [fixedEditId, setFixedEditId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState({});
+
+  const fixedExpensesColumns = [
+    { label: "Название", key: "name" },
+    { label: "Сумма", key: "amount", render: (row) => Number(row.amount || 0).toLocaleString() },
+    { label: "Период", key: "period" },
+  ];
 
   const fixedTotal = sumBy(state.fixedExpenses, (e) => e.amount);
 
@@ -67,17 +75,23 @@ function FixedExpensesPage() {
 
       <div className="card">
         <div className="page-header" style={{ marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>Список постоянных расходов</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ margin: 0 }}>Список постоянных расходов</h3>
+            <TableColumnSettings
+              columns={fixedExpensesColumns}
+              storageKey="fixed-expenses-columns"
+              onColumnsChange={setVisibleColumns}
+            />
+          </div>
           <div className="badge">Сумма: {fixedTotal.toLocaleString()}</div>
         </div>
         <Table
           data={state.fixedExpenses}
           columns={[
-            { label: "Название", key: "name" },
-            { label: "Сумма", render: (row) => Number(row.amount || 0).toLocaleString() },
-            { label: "Период", key: "period" },
+            ...fixedExpensesColumns,
             {
               label: "Действия",
+              key: "actions",
               render: (row) => (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="btn secondary" onClick={() => startEdit(row)}>
@@ -90,6 +104,7 @@ function FixedExpensesPage() {
               ),
             },
           ]}
+          visibleColumns={visibleColumns}
         />
       </div>
 
